@@ -84,5 +84,5 @@
 mkdir out
 javac src/* -d out/
 cd out
-java Main
+java -Xms2G -Xmx10G -Xss512k -XX:ActiveProcessorCount=4 Main
 ```
