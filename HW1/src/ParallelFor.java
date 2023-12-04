@@ -1,73 +1,43 @@
-import java.util.ArrayList;
-import java.util.concurrent.ForkJoinPool;
-import java.util.concurrent.RecursiveTask;
-import java.util.function.BiFunction;
+import java.util.concurrent.RecursiveAction;
+import java.util.function.Consumer;
 
-public class ParallelFor extends ParPrimitive<Integer, Void> {
+public class ParallelFor extends RecursiveAction {
+    private static final int BLOCK = 1000;
+
     private final int begin;
     private final int end;
-    private final BiFunction<ArrayList<Integer>, Integer, Void> f;
+    private final Consumer<Integer> f;
 
     public ParallelFor(
-            ArrayList<Integer> list,
-            ForkJoinPool forkJoinPool,
-            int being,
+            int begin,
             int end,
-            BiFunction<ArrayList<Integer>, Integer, Void> f
+            Consumer<Integer> f
     ) {
-        super(list, forkJoinPool);
-
-        this.begin = being;
+        this.begin = begin;
         this.end = end;
         this.f = f;
     }
 
     @Override
-    public Void proceed() {
+    protected void compute() {
         if (end < begin)
-            return null;
+            return;
 
-        if (begin == end) {
-            f.apply(list, begin);
-            return null;
+        if (end - begin < BLOCK) {
+            for (int i = begin; i <= end; i++)
+                f.accept(i);
+
+            return;
         }
 
         int m = (begin + end) / 2;
+        ParallelFor parallelForLeft = new ParallelFor(begin, m, f);
+        ParallelFor parallelForRight = new ParallelFor(m + 1, end, f);
 
-        RecursiveTask<Void> parallelForLeft = new RecursiveTask<Void>() {
-            @Override
-            protected Void compute() {
-                ParallelFor parallelFor = new ParallelFor(
-                        list,
-                        forkJoinPool,
-                        begin,
-                        m,
-                        f
-                );
-                parallelFor.proceed();
-                return null;
-            }
-        };
-        RecursiveTask<Void> parallelForRight = new RecursiveTask<Void>() {
-            @Override
-            protected Void compute() {
-                ParallelFor parallelFor = new ParallelFor(
-                        list,
-                        forkJoinPool,
-                        m + 1,
-                        end,
-                        f
-                );
-                parallelFor.proceed();
-                return null;
-            }
-        };
-        this.forkJoinPool.execute(parallelForLeft);
-        this.forkJoinPool.execute(parallelForRight);
+        parallelForLeft.fork();
+        parallelForRight.fork();
 
         parallelForLeft.join();
         parallelForRight.join();
-
-        return null;
     }
 }

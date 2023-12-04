@@ -1,132 +1,77 @@
 import java.sql.Timestamp;
 import java.time.Instant;
-import java.util.*;
-import java.util.concurrent.ForkJoinPool;
-import java.util.concurrent.ForkJoinTask;
-import java.util.concurrent.RecursiveTask;
-import java.util.function.Predicate;
+import java.util.Random;
+import java.util.concurrent.RecursiveAction;
 
-public class ParQuickSort extends QuickSort<Integer> {
+public class ParQuickSort extends RecursiveAction {
     private static final int BLOCK = 1000;
     private final Random random = new Random(Timestamp.from(Instant.now()).getTime());
-    private final ForkJoinPool forkJoinPool = new ForkJoinPool(4);
 
-    public ParQuickSort(ArrayList<Integer> list) {
-        super(list);
+    private int[] array;
+    private final int begin;
+    private final int end;
+
+
+    public ParQuickSort(int[] array, int begin, int end) {
+        this.array = array;
+        this.begin = begin;
+        this.end = end;
     }
 
-    private void seqSort(int begin, int end) {
-        if (end <= begin)
-            return;
-
-        int l = begin;
-        int r = end;
-        int m = Math.abs(this.random.nextInt()) % (end - begin + 1) + begin;
-
-        while (l < r) {
-            while (l < m && this.list.get(l) <= this.list.get(m)) {
-                l++;
-            }
-
-            while (r > m && this.list.get(r) >= this.list.get(m)) {
-                r--;
-            }
-
-            Collections.swap(this.list, l, r);
-
-            if (l == m) {
-                m = r;
-            } else if (r == m) {
-                m = l;
-            }
-        }
-
-        seqSort(begin, m);
-        seqSort(m + 1, end);
-    }
-
-    private void parSort(int begin, int end) {
-        if (end - begin < BLOCK) {
-            seqSort(begin, end);
-            return;
-        }
-
-        int m = Math.abs(this.random.nextInt()) % (end - begin + 1) + begin;
-
-        Filter filterLeft = new Filter(
-                list,
-                forkJoinPool,
-                begin,
-                end,
-                new Predicate<Integer>() {
-                    @Override
-                    public boolean test(Integer x) {
-                        return x < list.get(m);
-                    }
-                }
-        );
-        ArrayList<Integer> left = filterLeft.proceed();
-
-        Filter filterMiddle = new Filter(
-                list,
-                forkJoinPool,
-                begin,
-                end,
-                new Predicate<Integer>() {
-                    @Override
-                    public boolean test(Integer x) {
-                        return x == list.get(m);
-                    }
-                }
-        );
-        ArrayList<Integer> middle = filterMiddle.proceed();
-
-        Filter filterRight = new Filter(
-                list,
-                forkJoinPool,
-                begin,
-                end,
-                new Predicate<Integer>() {
-                    @Override
-                    public boolean test(Integer x) {
-                        return x > list.get(m);
-                    }
-                }
-        );
-        ArrayList<Integer> right = filterRight.proceed();
-
-        RecursiveTask<ArrayList<Integer>> quickSortLeft = new RecursiveTask<ArrayList<Integer>>() {
-            @Override
-            protected ArrayList<Integer> compute() {
-                ParQuickSort parQuickSort = new ParQuickSort(left);
-                parQuickSort.sort();
-
-                return parQuickSort.getList();
-            }
-        };
-        RecursiveTask<ArrayList<Integer>> quickSortRight = new RecursiveTask<ArrayList<Integer>>() {
-            @Override
-            protected ArrayList<Integer> compute() {
-                ParQuickSort parQuickSort = new ParQuickSort(right);
-                parQuickSort.sort();
-
-                return parQuickSort.getList();
-            }
-        };
-        this.forkJoinPool.execute(quickSortLeft);
-        this.forkJoinPool.execute(quickSortRight);
-
-        ArrayList<Integer> sortedLeft = quickSortLeft.join();
-        ArrayList<Integer> sortedRight = quickSortRight.join();
-
-        list = new ArrayList<>();
-        list.addAll(sortedLeft);
-        list.addAll(middle);
-        list.addAll(sortedRight);
+    private ParallelFor moveToInitialArray(int[] movingArray, int offset) {
+        return new ParallelFor(0, movingArray.length - 1, pos -> {
+            array[offset + pos] = movingArray[pos];
+        });
     }
 
     @Override
+    protected void compute() {
+        if (end - begin < BLOCK) {
+            SeqQuickSort seqQuickSort = new SeqQuickSort(array, begin, end);
+            seqQuickSort.sort();
+            return;
+        }
+
+        int m = Math.abs(this.random.nextInt()) % (end - begin + 1) + begin;
+
+        int mx = array[m];
+        Filter filterLeft = new Filter(array, begin, end, x -> x < mx);
+        filterLeft.fork();
+
+        Filter filterMiddle = new Filter(array, begin, end, x -> x == mx);
+        filterMiddle.fork();
+
+        Filter filterRight = new Filter(array, begin, end, x -> x > mx);
+        filterRight.fork();
+
+        int[] left = filterLeft.join();
+        int[] middle = filterMiddle.join();
+        int[] right = filterRight.join();
+
+        ParallelFor moveLeftParallelFor = moveToInitialArray(left, 0);
+        ParallelFor moveMiddleParallelFor = moveToInitialArray(middle, left.length);
+        ParallelFor moveRightParallelFor = moveToInitialArray(right, left.length + middle.length);
+
+        moveMiddleParallelFor.fork();
+
+        ParQuickSort quickSortLeft = new ParQuickSort(left, 0, left.length - 1);
+        quickSortLeft.fork();
+
+        ParQuickSort quickSortRight = new ParQuickSort(right, 0, right.length - 1);
+        quickSortRight.fork();
+
+        quickSortLeft.join();
+        moveLeftParallelFor.fork();
+
+        quickSortRight.join();
+        moveRightParallelFor.fork();
+
+        moveLeftParallelFor.join();
+        moveMiddleParallelFor.join();
+        moveRightParallelFor.join();
+    }
+
     public void sort() {
-        parSort(0, this.list.size() - 1);
+        compute();
     }
 }

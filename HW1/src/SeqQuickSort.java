@@ -1,14 +1,17 @@
 import java.sql.Timestamp;
 import java.time.Instant;
-import java.util.ArrayList;
-import java.util.Collections;
 import java.util.Random;
 
-public class SeqQuickSort extends QuickSort<Integer> {
+public class SeqQuickSort {
+    private int[] array;
+    private final int begin;
+    private final int end;
     private Random random = new Random(Timestamp.from(Instant.now()).getTime());
 
-    public SeqQuickSort(ArrayList<Integer> list) {
-        super(list);
+    public SeqQuickSort(int[] array, int begin, int end) {
+        this.array = array;
+        this.begin = begin;
+        this.end = end;
     }
 
     private void sort(int begin, int end) {
@@ -20,15 +23,17 @@ public class SeqQuickSort extends QuickSort<Integer> {
         int m = Math.abs(this.random.nextInt()) % (end - begin + 1) + begin;
 
         while (l < r) {
-            while (l < m && this.list.get(l) <= this.list.get(m)) {
+            while (l < m && this.array[l] <= this.array[m]) {
                 l++;
             }
 
-            while (r > m && this.list.get(r) >= this.list.get(m)) {
+            while (r > m && this.array[r] >= this.array[m]) {
                 r--;
             }
 
-            Collections.swap(this.list, l, r);
+            int tmp = array[l];
+            array[l] = array[r];
+            array[r] = tmp;
 
             if (l == m) {
                 m = r;
@@ -41,8 +46,7 @@ public class SeqQuickSort extends QuickSort<Integer> {
         sort(m + 1, end);
     }
 
-    @Override
     public void sort() {
-        sort(0, this.list.size() - 1);
+        sort(this.begin, this.end);
     }
 }
